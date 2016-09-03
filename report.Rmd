@@ -1,0 +1,17 @@
+---
+title: "Human Activity Recognition"
+author: "Anh Mai"
+date: "September 3, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load data
+
+```{r}
+training <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+```
