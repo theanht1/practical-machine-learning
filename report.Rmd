@@ -9,9 +9,90 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Load data
+## Overall
+Human Activity Recognition (HAR) is a key research area that is gaining increasing attention, especially for the development of context-aware systems. There are many potential applications for HAR, like: elderly monitoring, life log systems for monitoring energy expenditure and for supporting weight-loss programs, and digital assistants for weight lifting exercises. Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively.  
+In this assigment, we'll predict the manner in which they did exercise. In order to do this, I build several methods for training data and choose the method having the best accuracy
 
-```{r}
-training <- read.csv("pml-training.csv")
-test <- read.csv("pml-testing.csv")
+## Data preparing
+Firstly, we load some packages using for this assigment
+```{r, message=FALSE}
+library(caret)
+library(rpart)
 ```
+
+Load data (assume that we've already downloaded the data into current workspace).
+```{r, cache=TRUE}
+pml_training <- read.csv("pml-training.csv")
+pml_test <- read.csv("pml-testing.csv")
+```
+
+Clean the training data by removing the columns having NA or near zero values. The first 7 predictors are not useful to predict `classe` either.
+```{r, cache=TRUE}
+# Remove the first 7 columns
+clean_training <- pml_training[, -(1:7)]
+NZV_cols <- !nzv(clean_training, saveMetrics = TRUE)[, 4]
+# Remove columns having near zero values
+clean_training <- clean_training[, NZV_cols]
+NA_cols <- sapply(clean_training, function (x) !any(is.na(x)))
+# Remove columns having NA values
+clean_training <- clean_training[, NA_cols]
+names(clean_training)
+```
+
+Since the target of this assignment is predicting `classe` of `pml_test`, we'll partition `clean_training` into training set and test set. Finally, we'll set a seed for reproducibility.
+```{r}
+set.seed(7395)
+in_train <- createDataPartition(y = clean_training$classe, p = 0.8, list = FALSE)
+training <- clean_training[in_train, ]
+test <- clean_training[-in_train, ]
+```
+
+## Model building
+Now, we'll use three different method: decision tree (`rpart`), stochastic gradient boosting tree (`gbm`) and random forest (`rf`) to predict and evalute the error to choose the best method.  
+Firstly, we make a train control for doing cross validation.
+```{r}
+trControl <- trainControl(method = "cv", number = 5)
+```
+
+Build the three models
+```{r, cache=TRUE, message=FALSE}
+mod_rpart <- train(classe ~ ., method = "rpart", trControl = trControl, data = training) 
+mod_gbm <- train(classe ~ ., method = "gbm", trControl = trControl, verbose = FALSE, data = training)
+mod_rf <- train(classe ~ ., method = "rf", trControl = trControl, ntree = 100, data = training)
+```
+
+The plot for rpart model:
+```{r, message=FALSE}
+library(rattle)
+fancyRpartPlot(mod_rpart$finalModel)
+```
+
+Now we calculate the accuracy for each method with the test set
+```{r, message=FALSE}
+pred_rpart <- predict(mod_rpart, newdata = test)
+accuracy_rpart <- confusionMatrix(pred_rpart, test$classe)$overall[1]
+
+pred_gbm <- predict(mod_gbm, newdata = test)
+accuracy_gbm <- confusionMatrix(pred_gbm, test$classe)$overall[1]
+
+pred_rf <- predict(mod_rf, newdata = test)
+accuracy_rf <- confusionMatrix(pred_rf, test$classe)$overall[1]
+```
+
+The accuracy for each method:
+
+Method | Accuracy
+------ | --------
+rpart  | `r accuracy_rpart`
+gbm    | `r accuracy_gbm`
+rf     | `r accuracy_rf`
+
+We could see that `rpart` method does not have a good prediction, `gbm` is quite good with over 96% and `rf` has the best performance among such methods.  
+Consequently, we'll use random forest as our prediction method for such data.
+
+## Apply model for prediction
+Apply random forest model above for `pml_test`
+```{r}
+pred <- predict(mod_rf, newdata = pml_test)
+result <- data.frame(test_id = 1:20, predict = pred)
+result
